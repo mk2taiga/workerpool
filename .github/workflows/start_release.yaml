@@ -1,0 +1,33 @@
+name: Start Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  start_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: master
+
+      - name: Create new release tag
+        run: |
+          # Clone full repository
+          git fetch --prune --unshallow
+
+          # Pull all tags
+          git pull --tags
+
+          # Get the current tag version number
+          current_year=$(date +'%Y')
+          latest_num=$(git describe --tags --abbrev=0 | grep -E "^v${current_year}\.[0-9]+$" | cut -b 7- )
+          if [ -z "$latest_num" ]; then
+              latest_num="0"
+          fi
+
+          # Create new release tag
+          new_release_num=`expr ${latest_num} + 1`
+          new_tag="v$current_year.$new_release_num"
+          git tag $new_tag
+          git push origin $new_tag
