@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -188,10 +189,21 @@ Loop:
 			}
 			// Got a task to do.
 			select {
+			// case では一旦 queue にタスクを詰むだけ積んでおく。
 			case p.workerQueue <- task:
+			// task を channel から取得できなかった時に呼ばれる。なので、 queue にはつまれない。
+			//
+			// 訂正: 上記の説明は間違っています。p.workerQueue はサイズが0なので、即ブロックされます。
+			// そのため、p.workerQueue が取得されなければならない。取得するためのは startWorker を走らせる必要があります。
+			// そして、ブロックされることから default に入ります。そしてこの中で startWorker が実行されるというわけです。
 			default:
 				// Create a new worker, if not at max.
+				fmt.Println(len(p.workerQueue))
 				if workerCount < p.maxWorkers {
+					// ワーカーを実行する。task は queue につまれていないので、引数に渡して実行してあげる。
+					// queue の中の func をループして全て実行してやる。
+					// startWorker は goroutine なので並行して実行されるが、 queue はメモリを共有されているので
+					// 同じ func が複数回呼ばれるようなことはない。
 					go startWorker(task, p.workerQueue)
 					workerCount++
 				} else {
@@ -299,6 +311,7 @@ func (p *WorkerPool) killIdleWorker() bool {
 func (p *WorkerPool) runQueuedTasks() {
 	for p.waitingQueue.Len() != 0 {
 		// A worker is ready, so give task to worker.
+		// ここで waitingQueue から取得することができるということは、 worker が順繰り順繰り回っているということ。
 		p.workerQueue <- p.waitingQueue.PopFront().(func())
 		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 	}
